@@ -22,7 +22,11 @@
     MEMLOOP:
       STA $0000,X
       STA $0100,X
+
+      LDA #$FF
       STA $0200,X
+
+      LDA #$0
       STA $0300,X
       STA $0400,X
       STA $0500,X
