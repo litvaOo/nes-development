@@ -1,5 +1,4 @@
 .segment "HEADER"
-  .org $7FF0
   .byte $4E,$45,$53,$1A
   .byte $02
   .byte $01
