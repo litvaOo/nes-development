@@ -19,8 +19,8 @@
   XScroll:           .res 1
   CurrentNametable:  .res 1
   Column:            .res 1
-  NewColumnAddress:  .res 1
-  SourceAddr:        .res 1
+  NewColumnAddress:  .res 2
+  SourceAddress:     .res 2
 
 
 .segment "CODE"
@@ -72,6 +72,64 @@
 .endproc
 
 .proc DrawNewColumn
+  ; destination
+  LDA XScroll
+  LSR
+  LSR
+  LSR
+  STA NewColumnAddress
+
+  LDA CurrentNametable
+  EOR #1
+  ASL
+  ASL
+  CLC
+  ADC #$20
+  STA NewColumnAddress+1
+
+  ; Source 
+  LDA Column
+  ASL
+  ASL
+  ASL
+  ASL
+  ASL
+  STA SourceAddress
+
+  LDA Column
+  LSR
+  LSR
+  LSR
+  STA SourceAddress+1
+
+  LDA SourceAddress
+  CLC
+  ADC #<BackgroundData
+  STA SourceAddress
+
+  LDA SourceAddress+1
+  ADC #>BackgroundData
+  STA SourceAddress+1
+
+  DRAW_NEW_COLUMN:
+    LDA #%00000100
+    STA PPU_CTRL
+
+    LDA PPU_STATUS
+    LDA NewColumnAddress+1
+    STA PPU_ADDR
+    LDA NewColumnAddress
+    STA PPU_ADDR
+
+    LDX #30
+    LDY #0
+    DRAW_NEW_COLUMN_LOOP:
+      LDA (SourceAddress),Y
+      STA PPU_DATA
+      INY
+      DEX
+      BNE DRAW_NEW_COLUMN_LOOP
+  
   RTS
 .endproc
 
@@ -82,7 +140,6 @@
     STA Frame
     STA Clock60
     STA XScroll
-    STA CurrentNametable
     STA Column
 
     MAIN:
@@ -90,6 +147,23 @@
       JSR LoadSprites
 
     LOAD_NAMETABLE_0:
+      LDA #1
+      STA CurrentNametable
+
+      LOAD_NAMETABLE_0_LOOP:
+        JSR DrawNewColumn
+        INC Column
+        LDA XScroll
+        CLC
+        ADC #8
+        STA XScroll
+        LDA Column
+        CMP #32
+        BNE LOAD_NAMETABLE_0_LOOP
+
+      LDA #0
+      STA CurrentNametable
+      STA XScroll
 
     ENABLE_PPU_RENDERING:
       LDA #%10010000
@@ -115,9 +189,15 @@
     NEW_COLUMN_CHECK:
       LDA XScroll
       AND #%00000111
-      BNE :+
+      BNE END_COLUMN_CHECK
         JSR DrawNewColumn
-      :
+        CLAMP_128_COLUMNS:
+          LDA Column
+          CLC
+          ADC #1
+          AND #%01111111
+          STA Column
+      END_COLUMN_CHECK:
 
     SCROLL_BACKGROUND:
       INC XScroll
@@ -338,5 +418,5 @@ SpriteData:
 
 .segment "VECTORS"
   .word NMI
-  .word Reset
+  .word RESET
   .word IRQ
