@@ -14,6 +14,7 @@
 
   Frame:             .res 1
   Clock60:           .res 1
+  IsDrawComplete:    .res 1
   BackgroundPointer: .res 2
 
   XScroll:           .res 1
@@ -260,8 +261,18 @@
       LDA #%00011110
       STA PPU_MASK
 
-    LOOPFOREVER:
-      JMP LOOPFOREVER
+    GAME_LOOP:
+      JSR ReadControllers
+
+      LDA IsDrawComplete
+      WAIT_FOR_VBLANK:
+        CMP IsDrawComplete
+        BEQ WAIT_FOR_VBLANK
+
+      LDA #0
+      STA IsDrawComplete
+
+      JMP GAME_LOOP
 
   NMI:
     INC Frame
@@ -333,11 +344,14 @@
     SET_GAME_CLOCK:
       LDA Frame
       CMP #60
-      BNE NMI_RETURN
+      BNE SET_DRAW_COMPLETE
       INC Clock60
       LDA #0
       STA Frame
-    NMI_RETURN:
+
+    SET_DRAW_COMPLETE:
+      LDA #1
+      STA IsDrawComplete
       RTI
   IRQ:
     RTI
