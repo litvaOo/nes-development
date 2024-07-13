@@ -66,7 +66,7 @@
     LDA SpriteData,X
     STA $0200,X
     INX
-    CPX #16
+    CPX #20
     BNE LOOP_SPRITES
   RTS
 .endproc
@@ -285,12 +285,32 @@
     NEW_ATTRIBUTES_COLUMN_CHECK:
       LDA XScroll
       AND #%00011111
-      BNE SCROLL_BACKGROUND
+      BNE SET_PPU_NO_SCROLL
         JSR DrawAttributesColumn
+
+    SET_PPU_NO_SCROLL:
+      LDA #0
+      STA PPU_SCROLL
+      STA PPU_SCROLL
+  
+    ENABLE_PPU_SPRITE_0:
+      LDA #%10010000
+      STA PPU_CTRL
+      LDA #%00011110
+      STA PPU_MASK
+
+    WAIT_FOR_NO_SPRITE_0:
+      LDA PPU_STATUS
+      AND #%01000000
+      BNE WAIT_FOR_NO_SPRITE_0
+
+    WAIT_FOR_SPRITE_0:
+      LDA PPU_STATUS
+      AND #%01000000
+      BEQ WAIT_FOR_SPRITE_0
 
     SCROLL_BACKGROUND:
       INC XScroll
-
       LDA XScroll
       BNE :+
         LDA CurrentNametable
@@ -497,10 +517,12 @@ AttributeData:
   .byte $ff,$aa,$aa,$aa,$5a,$00,$00,$00
 
 SpriteData:
-.byte $A6,$60,%00000000,$70
-.byte $A6,$61,%00000000,$78
-.byte $A6,$62,%00000000,$80
-.byte $A6,$63,%00000000,$88
+  .byte $27, $70, %00100001, $6 ; tile zero for screen scrolling split
+
+  .byte $A6,$60,%00000000,$70
+  .byte $A6,$61,%00000000,$78
+  .byte $A6,$62,%00000000,$80
+  .byte $A6,$63,%00000000,$88
 
 .segment "CHARS"
   .incbin "atlantico.chr"
