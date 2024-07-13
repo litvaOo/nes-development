@@ -1,3 +1,5 @@
 *.nes
 *.o
 *.fdb
+*.dbg
+*.nl

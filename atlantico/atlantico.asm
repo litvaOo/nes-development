@@ -21,7 +21,7 @@
   Column:            .res 1
   NewColumnAddress:  .res 2
   SourceAddress:     .res 2
-
+  AttributeColumn:   .res 1
 
 .segment "CODE"
 
@@ -133,6 +133,84 @@
   RTS
 .endproc
 
+.proc DrawAttributesColumn
+  ; Destination
+  LDA AttributeColumn
+  AND #%00000111
+  CLC
+  ADC #$C0
+  STA NewColumnAddress
+
+  LDA CurrentNametable
+  EOR #1
+  ASL
+  ASL
+  CLC
+  ADC #$23
+  STA NewColumnAddress+1
+
+  ; Source
+  LDA AttributeColumn
+  ASL
+  ASL
+  ASL
+  STA SourceAddress
+
+  LDA AttributeColumn
+  LSR
+  LSR
+  LSR
+  LSR
+  LSR
+  STA SourceAddress+1
+
+  LDA SourceAddress
+  CLC
+  ADC #<AttributeData
+  STA SourceAddress
+
+  LDA SourceAddress+1
+  ADC #>AttributeData
+  STA SourceAddress+1
+
+  DRAW_NEW_ATTRIBUTE_COLUMN:
+    LDA #%00000000
+    STA PPU_CTRL
+
+    LDA PPU_STATUS
+    LDA NewColumnAddress+1
+    STA PPU_ADDR
+    LDA NewColumnAddress
+    STA PPU_ADDR
+
+    LDX #8
+    LDY #0
+    DRAW_NEW_ATTRIBUTE_COLUMN_LOOP:
+      LDA (SourceAddress),Y
+      STA PPU_DATA
+      INY
+      LDA PPU_STATUS
+      LDA NewColumnAddress+1
+      STA PPU_ADDR
+      LDA NewColumnAddress
+      CLC
+      ADC #8
+      STA NewColumnAddress
+      STA PPU_ADDR
+      DEX
+      BNE DRAW_NEW_ATTRIBUTE_COLUMN_LOOP
+
+  LDA AttributeColumn
+  CLC
+  ADC #1
+  CMP #32
+  BNE ATTRIBUTE_DRAW_RETURN
+    LDA #0
+  ATTRIBUTE_DRAW_RETURN:
+  STA AttributeColumn
+  RTS
+.endproc
+
   RESET:
     INIT_NES
 
@@ -141,6 +219,7 @@
     STA Clock60
     STA XScroll
     STA Column
+    STA AttributeColumn
 
     MAIN:
       JSR LoadPalette
@@ -152,6 +231,11 @@
 
       LOAD_NAMETABLE_0_LOOP:
         JSR DrawNewColumn
+        LDA XScroll
+        AND #%00011111
+        BNE :+
+          JSR DrawAttributesColumn
+        :
         INC Column
         LDA XScroll
         CLC
@@ -189,7 +273,7 @@
     NEW_COLUMN_CHECK:
       LDA XScroll
       AND #%00000111
-      BNE END_COLUMN_CHECK
+      BNE NEW_ATTRIBUTES_COLUMN_CHECK
         JSR DrawNewColumn
         CLAMP_128_COLUMNS:
           LDA Column
@@ -197,7 +281,12 @@
           ADC #1
           AND #%01111111
           STA Column
-      END_COLUMN_CHECK:
+
+    NEW_ATTRIBUTES_COLUMN_CHECK:
+      LDA XScroll
+      AND #%00011111
+      BNE SCROLL_BACKGROUND
+        JSR DrawAttributesColumn
 
     SCROLL_BACKGROUND:
       INC XScroll
