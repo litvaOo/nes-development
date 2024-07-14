@@ -4,6 +4,8 @@
 .include "../utils.inc"
 
 .segment "ZEROPAGE"
+  CountGameLoop:     .res 1
+  CountVBlank:       .res 1
   Buttons:           .res 1
 
   XPos:              .res 2 ; fixed point, hi byte is INT part
@@ -272,9 +274,14 @@
       LDA #0
       STA IsDrawComplete
 
+      INC CountGameLoop
+
       JMP GAME_LOOP
 
   NMI:
+    PUSH_REGISTERS
+    INC CountVBlank
+
     INC Frame
 
     OAM_COPY:
@@ -352,7 +359,8 @@
     SET_DRAW_COMPLETE:
       LDA #1
       STA IsDrawComplete
-      RTI
+    PULL_REGISTERS
+    RTI
   IRQ:
     RTI
 
