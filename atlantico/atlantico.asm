@@ -2,14 +2,13 @@
 .include "../header.inc"
 .include "../reset.inc"
 .include "../utils.inc"
+.include "actor.inc"
 
 .segment "ZEROPAGE"
-  CountGameLoop:     .res 1
-  CountVBlank:       .res 1
   Buttons:           .res 1
 
-  XPos:              .res 2 ; fixed point, hi byte is INT part
-  YPos:              .res 2
+  XPos:              .res 1 ; fixed point, hi byte is INT part
+  YPos:              .res 1
 
   XVel:              .res 1 ; pixels per 256 frames
   YVel:              .res 1
@@ -18,6 +17,7 @@
   Clock60:           .res 1
   IsDrawComplete:    .res 1
   BackgroundPointer: .res 2
+  SpritePointer:     .res 2
 
   XScroll:           .res 1
   CurrentNametable:  .res 1
@@ -25,6 +25,17 @@
   NewColumnAddress:  .res 2
   SourceAddress:     .res 2
   AttributeColumn:   .res 1
+
+  ActorsArray:       .res MAX_ACTORS * .sizeof(Actor)
+
+  ParamType:         .res 1
+  ParamXPos:         .res 1
+  ParamYPos:         .res 1
+  ParamXVel:         .res 1
+  ParamYVel:         .res 1
+  ParamTileIndex:    .res 1
+  ParamNumberTiles:  .res 1
+  ParamAttributes:   .res 1
 
 .segment "CODE"
 
@@ -59,18 +70,6 @@
     CPY #32
     BNE LOOPPALETTE
 
-  RTS
-.endproc
-
-.proc LoadSprites
-  LDX #0
-
-  LOOP_SPRITES:
-    LDA SpriteData,X
-    STA $0200,X
-    INX
-    CPX #20
-    BNE LOOP_SPRITES
   RTS
 .endproc
 
@@ -214,6 +213,121 @@
   RTS
 .endproc
 
+.proc AddNewActor
+  LDX #0
+  ADD_ACTOR_LOOP:
+    CPX #MAX_ACTORS * .sizeof(Actor)
+    BEQ END_ROUTINE
+    LDA ActorsArray+Actor::Type,X
+    CMP #ActorType::NULL
+    BEQ ADD_NEW_ACTOR
+    NEXT_ACTOR:
+      TXA
+      CLC
+      ADC #.sizeof(Actor)
+      TAX
+      JMP ADD_ACTOR_LOOP
+
+  ADD_NEW_ACTOR:
+    LDA ParamType
+    STA ActorsArray+Actor::Type,X
+    LDA ParamXPos
+    STA ActorsArray+Actor::XPos,X
+    LDA ParamYPos
+    STA ActorsArray+Actor::YPos,X
+    LDA ParamXVel
+    STA ActorsArray+Actor::XVel,X
+    LDA ParamYVel
+    STA ActorsArray+Actor::YVel,X
+  END_ROUTINE:
+    RTS
+.endproc
+
+.proc RenderActors
+  LDA #$02
+  STA SpritePointer+1
+  LDA #$00
+  STA SpritePointer
+
+  LDY #0
+  LDX #0
+  RENDER_ACTORS_LOOP:
+    LDA ActorsArray+Actor::Type,X
+
+    CMP #ActorType::PLAYER
+    BNE :+
+      LDA ActorsArray+Actor::XPos,X
+      STA ParamXPos
+      LDA ActorsArray+Actor::YPos,X
+      STA ParamYPos
+      LDA #$60
+      STA ParamTileIndex
+      LDA #%00000000
+      STA ParamAttributes
+      LDA #4
+      STA ParamNumberTiles
+
+      JSR DrawSprite
+      JMP NEXT_RENDER_ACTOR
+    :
+    CMP #ActorType::MISSILE
+
+    BNE :+
+
+      JMP NEXT_RENDER_ACTOR
+    :
+    CMP #ActorType::SUBMARINE
+
+    BNE :+
+
+      JMP NEXT_RENDER_ACTOR
+    :
+    NEXT_RENDER_ACTOR:
+      TXA
+      CLC
+      ADC #.sizeof(Actor)
+      TAX
+      CMP #MAX_ACTORS*.sizeof(Actor)
+      BNE RENDER_ACTORS_LOOP
+  RTS
+.endproc
+
+.proc DrawSprite
+  TXA
+  PHA
+  LDX #0
+
+  TILE_LOOP:
+    LDA ParamYPos
+    STA (SpritePointer),Y
+    INY
+
+    LDA ParamTileIndex
+    STA (SpritePointer),Y
+    INC ParamTileIndex
+    INY
+
+    LDA ParamAttributes
+    STA (SpritePointer),Y
+    INY
+
+    LDA ParamXPos
+    STA (SpritePointer),Y
+    INY
+    CLC
+    ADC #8
+    STA ParamXPos
+
+    INX
+    CPX ParamNumberTiles
+    BNE TILE_LOOP
+
+  PLA
+  TAX
+
+  RTS
+.endproc
+
   RESET:
     INIT_NES
 
@@ -223,10 +337,37 @@
     STA XScroll
     STA Column
     STA AttributeColumn
+    LDA #113
+    STA XPos
+    LDA #165
+    STA YPos
 
     MAIN:
       JSR LoadPalette
-      JSR LoadSprites
+    
+    ADD_SPRITE_0:
+      LDA #ActorType::SPRITE0
+      STA ParamType
+      LDA #0
+      STA ParamXPos
+      LDA #27
+      STA ParamYPos
+      LDA #0
+      STA ParamXVel
+      STA ParamYVel
+      JSR AddNewActor
+
+    ADD_PLAYER:
+      LDA #ActorType::PLAYER
+      STA ParamType
+      LDA XPos
+      STA ParamXPos
+      LDA YPos
+      STA ParamYPos
+      LDA #0
+      STA ParamXVel
+      STA ParamYVel
+      JSR AddNewActor
 
     LOAD_NAMETABLE_0:
       LDA #1
@@ -266,21 +407,38 @@
     GAME_LOOP:
       JSR ReadControllers
 
-      LDA IsDrawComplete
+      CHECK_A_BUTTON:
+        LDA Buttons
+        AND #BUTTON_A
+        BEQ :+
+          LDA #ActorType::MISSILE
+          STA ParamType
+          LDA XPos
+          STA ParamXPos
+          LDA YPos
+          STA ParamYPos
+          LDA #0
+          STA ParamXVel
+          LDA #255
+          STA ParamYVel
+          JSR AddNewActor
+        :
+
+      ; JSR SpawnActors
+      ; JSR UpdateActors
+      JSR RenderActors
+
       WAIT_FOR_VBLANK:
-        CMP IsDrawComplete
+        LDA IsDrawComplete
         BEQ WAIT_FOR_VBLANK
 
       LDA #0
       STA IsDrawComplete
 
-      INC CountGameLoop
-
       JMP GAME_LOOP
 
   NMI:
     PUSH_REGISTERS
-    INC CountVBlank
 
     INC Frame
 
@@ -303,29 +461,30 @@
     NEW_ATTRIBUTES_COLUMN_CHECK:
       LDA XScroll
       AND #%00011111
-      BNE SET_PPU_NO_SCROLL
+      ; BNE SET_PPU_NO_SCROLL
+      BNE SCROLL_BACKGROUND
         JSR DrawAttributesColumn
 
-    SET_PPU_NO_SCROLL:
-      LDA #0
-      STA PPU_SCROLL
-      STA PPU_SCROLL
-  
-    ENABLE_PPU_SPRITE_0:
-      LDA #%10010000
-      STA PPU_CTRL
-      LDA #%00011110
-      STA PPU_MASK
-
-    WAIT_FOR_NO_SPRITE_0:
-      LDA PPU_STATUS
-      AND #%01000000
-      BNE WAIT_FOR_NO_SPRITE_0
-
-    WAIT_FOR_SPRITE_0:
-      LDA PPU_STATUS
-      AND #%01000000
-      BEQ WAIT_FOR_SPRITE_0
+    ; SET_PPU_NO_SCROLL:
+    ;   LDA #0
+    ;   STA PPU_SCROLL
+    ;   STA PPU_SCROLL
+    ;
+    ; ENABLE_PPU_SPRITE_0:
+    ;   LDA #%10010000
+    ;   STA PPU_CTRL
+    ;   LDA #%00011110
+    ;   STA PPU_MASK
+    ;
+    ; WAIT_FOR_NO_SPRITE_0:
+    ;   LDA PPU_STATUS
+    ;   AND #%01000000
+    ;   BNE WAIT_FOR_NO_SPRITE_0
+    ;
+    ; WAIT_FOR_SPRITE_0:
+    ;   LDA PPU_STATUS
+    ;   AND #%01000000
+    ;   BEQ WAIT_FOR_SPRITE_0
 
     SCROLL_BACKGROUND:
       INC XScroll
@@ -537,14 +696,6 @@ AttributeData:
   .byte $ff,$aa,$aa,$aa,$5a,$00,$00,$00
   .byte $ff,$aa,$aa,$aa,$59,$00,$00,$00
   .byte $ff,$aa,$aa,$aa,$5a,$00,$00,$00
-
-SpriteData:
-  .byte $27, $70, %00100001, $6 ; tile zero for screen scrolling split
-
-  .byte $A6,$60,%00000000,$70
-  .byte $A6,$61,%00000000,$78
-  .byte $A6,$62,%00000000,$80
-  .byte $A6,$63,%00000000,$88
 
 .segment "CHARS"
   .incbin "atlantico.chr"
