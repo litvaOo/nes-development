@@ -273,13 +273,35 @@
     CMP #ActorType::MISSILE
 
     BNE :+
+      LDA ActorsArray+Actor::XPos,X
+      STA ParamXPos
+      LDA ActorsArray+Actor::YPos,X
+      STA ParamYPos
+      LDA #$50
+      STA ParamTileIndex
+      LDA #%00000000
+      STA ParamAttributes
+      LDA #1
+      STA ParamNumberTiles
 
+      JSR DrawSprite
       JMP NEXT_RENDER_ACTOR
     :
     CMP #ActorType::SUBMARINE
 
     BNE :+
+      LDA ActorsArray+Actor::XPos,X
+      STA ParamXPos
+      LDA ActorsArray+Actor::YPos,X
+      STA ParamYPos
+      LDA #$60
+      STA ParamTileIndex
+      LDA #%00000000
+      STA ParamAttributes
+      LDA #4
+      STA ParamNumberTiles
 
+      JSR DrawSprite
       JMP NEXT_RENDER_ACTOR
     :
     NEXT_RENDER_ACTOR:
@@ -416,6 +438,8 @@
           LDA XPos
           STA ParamXPos
           LDA YPos
+          CLC
+          SBC #8
           STA ParamYPos
           LDA #0
           STA ParamXVel
