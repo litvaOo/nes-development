@@ -5,6 +5,7 @@
 .include "actor.inc"
 
 .segment "ZEROPAGE"
+  PreviousButtons:           .res 1
   Buttons:           .res 1
 
   XPos:              .res 1 ; fixed point, hi byte is INT part
@@ -31,11 +32,11 @@
   ParamType:         .res 1
   ParamXPos:         .res 1
   ParamYPos:         .res 1
-  ParamXVel:         .res 1
-  ParamYVel:         .res 1
   ParamTileIndex:    .res 1
   ParamNumberTiles:  .res 1
   ParamAttributes:   .res 1
+
+  PreviousOAMBytes:  .res 1
 
 .segment "CODE"
 
@@ -213,6 +214,32 @@
   RTS
 .endproc
 
+.proc UpdateActors
+  LDX #0
+  UPDATE_ACTORS_LOOP:
+    LDA ActorsArray + Actor::Type,X
+
+    CMP #ActorType::MISSILE
+    BNE :+
+      LDA ActorsArray + Actor::YPos,X
+      SEC
+      SBC #1
+      STA ActorsArray + Actor::YPos,X
+      CMP #45
+      BCS :+
+        LDA #ActorType::NULL
+        STA ActorsArray + Actor::Type,X
+    :
+    NEXT_UPDATE_ACTOR:
+      TXA
+      CLC
+      ADC #.sizeof(Actor)
+      TAX
+      CMP #MAX_ACTORS * .sizeof(Actor)
+      BNE UPDATE_ACTORS_LOOP
+  RTS
+.endproc
+
 .proc AddNewActor
   LDX #0
   ADD_ACTOR_LOOP:
@@ -235,10 +262,6 @@
     STA ActorsArray+Actor::XPos,X
     LDA ParamYPos
     STA ActorsArray+Actor::YPos,X
-    LDA ParamXVel
-    STA ActorsArray+Actor::XVel,X
-    LDA ParamYVel
-    STA ActorsArray+Actor::YVel,X
   END_ROUTINE:
     RTS
 .endproc
@@ -270,8 +293,8 @@
       JSR DrawSprite
       JMP NEXT_RENDER_ACTOR
     :
-    CMP #ActorType::MISSILE
 
+    CMP #ActorType::MISSILE
     BNE :+
       LDA ActorsArray+Actor::XPos,X
       STA ParamXPos
@@ -279,7 +302,7 @@
       STA ParamYPos
       LDA #$50
       STA ParamTileIndex
-      LDA #%00000000
+      LDA #%00000001
       STA ParamAttributes
       LDA #1
       STA ParamNumberTiles
@@ -287,23 +310,24 @@
       JSR DrawSprite
       JMP NEXT_RENDER_ACTOR
     :
-    CMP #ActorType::SUBMARINE
 
+    CMP #ActorType::SPRITE0
     BNE :+
       LDA ActorsArray+Actor::XPos,X
       STA ParamXPos
       LDA ActorsArray+Actor::YPos,X
       STA ParamYPos
-      LDA #$60
+      LDA #$70
       STA ParamTileIndex
-      LDA #%00000000
+      LDA #%00100000
       STA ParamAttributes
-      LDA #4
+      LDA #1
       STA ParamNumberTiles
 
       JSR DrawSprite
       JMP NEXT_RENDER_ACTOR
     :
+
     NEXT_RENDER_ACTOR:
       TXA
       CLC
@@ -311,6 +335,26 @@
       TAX
       CMP #MAX_ACTORS*.sizeof(Actor)
       BNE RENDER_ACTORS_LOOP
+
+
+  TYA
+  PHA
+  CLEAR_TAIL:
+    CPY PreviousOAMBytes
+    BCS :+
+      LDA #$FF
+      STA(SpritePointer),Y
+      INY
+      STA(SpritePointer),Y
+      INY
+      STA(SpritePointer),Y
+      INY
+      STA(SpritePointer),Y
+      INY
+      JMP CLEAR_TAIL
+    :
+  PLA
+  STA PreviousOAMBytes
   RTS
 .endproc
 
@@ -374,9 +418,6 @@
       STA ParamXPos
       LDA #27
       STA ParamYPos
-      LDA #0
-      STA ParamXVel
-      STA ParamYVel
       JSR AddNewActor
 
     ADD_PLAYER:
@@ -386,9 +427,6 @@
       STA ParamXPos
       LDA YPos
       STA ParamYPos
-      LDA #0
-      STA ParamXVel
-      STA ParamYVel
       JSR AddNewActor
 
     LOAD_NAMETABLE_0:
@@ -427,29 +465,32 @@
       STA PPU_MASK
 
     GAME_LOOP:
+      LDA Buttons
+      STA PreviousButtons
+
       JSR ReadControllers
 
       CHECK_A_BUTTON:
         LDA Buttons
         AND #BUTTON_A
         BEQ :+
-          LDA #ActorType::MISSILE
-          STA ParamType
-          LDA XPos
-          STA ParamXPos
-          LDA YPos
-          CLC
-          SBC #8
-          STA ParamYPos
-          LDA #0
-          STA ParamXVel
-          LDA #255
-          STA ParamYVel
-          JSR AddNewActor
+          LDA Buttons
+          AND #BUTTON_A
+          CMP PreviousButtons
+          BEQ :+
+            LDA #ActorType::MISSILE
+            STA ParamType
+            LDA XPos
+            STA ParamXPos
+            LDA YPos
+            SEC
+            SBC #8
+            STA ParamYPos
+            JSR AddNewActor
         :
 
       ; JSR SpawnActors
-      ; JSR UpdateActors
+      JSR UpdateActors
       JSR RenderActors
 
       WAIT_FOR_VBLANK:
@@ -485,30 +526,29 @@
     NEW_ATTRIBUTES_COLUMN_CHECK:
       LDA XScroll
       AND #%00011111
-      ; BNE SET_PPU_NO_SCROLL
-      BNE SCROLL_BACKGROUND
+      BNE SET_PPU_NO_SCROLL
         JSR DrawAttributesColumn
 
-    ; SET_PPU_NO_SCROLL:
-    ;   LDA #0
-    ;   STA PPU_SCROLL
-    ;   STA PPU_SCROLL
-    ;
-    ; ENABLE_PPU_SPRITE_0:
-    ;   LDA #%10010000
-    ;   STA PPU_CTRL
-    ;   LDA #%00011110
-    ;   STA PPU_MASK
-    ;
-    ; WAIT_FOR_NO_SPRITE_0:
-    ;   LDA PPU_STATUS
-    ;   AND #%01000000
-    ;   BNE WAIT_FOR_NO_SPRITE_0
-    ;
-    ; WAIT_FOR_SPRITE_0:
-    ;   LDA PPU_STATUS
-    ;   AND #%01000000
-    ;   BEQ WAIT_FOR_SPRITE_0
+    SET_PPU_NO_SCROLL:
+      LDA #0
+      STA PPU_SCROLL
+      STA PPU_SCROLL
+
+    ENABLE_PPU_SPRITE_0:
+      LDA #%10010000
+      STA PPU_CTRL
+      LDA #%00011110
+      STA PPU_MASK
+
+    WAIT_FOR_NO_SPRITE_0:
+      LDA PPU_STATUS
+      AND #%01000000
+      BNE WAIT_FOR_NO_SPRITE_0
+
+    WAIT_FOR_SPRITE_0:
+      LDA PPU_STATUS
+      AND #%01000000
+      BEQ WAIT_FOR_SPRITE_0
 
     SCROLL_BACKGROUND:
       INC XScroll
