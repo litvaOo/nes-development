@@ -334,8 +334,9 @@
       ADC #.sizeof(Actor)
       TAX
       CMP #MAX_ACTORS*.sizeof(Actor)
-      BNE RENDER_ACTORS_LOOP
-
+      BEQ :+
+        JMP RENDER_ACTORS_LOOP
+      :
 
   TYA
   PHA
