@@ -40,6 +40,8 @@
 
   PreviousOAMBytes:  .res 1
 
+  Seed:              .res 2
+
 .segment "CODE"
 
 .proc ReadControllers
@@ -453,6 +455,22 @@
   RTS
 .endproc
 
+.proc GetRandomNumber
+  LDY #0
+  LDA Seed+0
+  :
+    ASL
+    ROL Seed+1
+    BCC :+
+      EOR #$39
+    :
+    DEY
+  BNE :--
+  STA Seed+0
+  CMP #0
+  RTS
+.endproc
+
 .proc SpawnActors
   SPAWN_SUBMARINE:
     LDA Clock60
@@ -464,7 +482,12 @@
       STA ParamType
       LDA #223
       STA ParamXPos
-      LDA #185
+      JSR GetRandomNumber
+      LSR
+      LSR
+      LSR
+      CLC
+      ADC #180
       STA ParamYPos
 
       JSR AddNewActor
@@ -476,13 +499,17 @@
     LDA Clock60
     SEC
     SBC PreviousAirplane
-    CMP #5
+    CMP #2
     BNE :+
       LDA #ActorType::AIRPLANE
       STA ParamType
-      LDA #223
+      LDA #235
       STA ParamXPos
-      LDA #80
+      JSR GetRandomNumber
+      LSR
+      LSR
+      CLC
+      ADC #40
       STA ParamYPos
 
       JSR AddNewActor
@@ -506,6 +533,9 @@
     STA XPos
     LDA #165
     STA YPos
+    LDA #$10
+    STA Seed+0
+    STA Seed+1
 
     MAIN:
       JSR LoadPalette
