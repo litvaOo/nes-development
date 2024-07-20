@@ -14,6 +14,8 @@
   XVel:              .res 1 ; pixels per 256 frames
   YVel:              .res 1
 
+  PreviousSubmarine: .res 1
+  PreviousAirplane:  .res 1
   Frame:             .res 1
   Clock60:           .res 1
   IsDrawComplete:    .res 1
@@ -230,6 +232,28 @@
         LDA #ActorType::NULL
         STA ActorsArray + Actor::Type,X
     :
+
+    CMP #ActorType::SUBMARINE
+    BNE :+
+      LDA ActorsArray + Actor::XPos,X
+      SEC
+      SBC #1
+      STA ActorsArray + Actor::XPos,X
+      BCS :+
+        LDA #ActorType::NULL
+        STA ActorsArray + Actor::Type,X
+    :
+
+    CMP #ActorType::AIRPLANE
+    BNE :+
+      LDA ActorsArray + Actor::XPos,X
+      SEC
+      SBC #2
+      STA ActorsArray + Actor::XPos,X
+      BCS :+
+        LDA #ActorType::NULL
+        STA ActorsArray + Actor::Type,X
+    :
     NEXT_UPDATE_ACTOR:
       TXA
       CLC
@@ -327,6 +351,40 @@
       JSR DrawSprite
       JMP NEXT_RENDER_ACTOR
     :
+    
+    CMP #ActorType::SUBMARINE
+    BNE :+
+      LDA ActorsArray+Actor::XPos,X
+      STA ParamXPos
+      LDA ActorsArray+Actor::YPos,X
+      STA ParamYPos
+      LDA #$04
+      STA ParamTileIndex
+      LDA #%00100000
+      STA ParamAttributes
+      LDA #4
+      STA ParamNumberTiles
+
+      JSR DrawSprite
+      JMP NEXT_RENDER_ACTOR
+    :
+
+    CMP #ActorType::AIRPLANE
+    BNE :+
+      LDA ActorsArray+Actor::XPos,X
+      STA ParamXPos
+      LDA ActorsArray+Actor::YPos,X
+      STA ParamYPos
+      LDA #$10
+      STA ParamTileIndex
+      LDA #%00000011
+      STA ParamAttributes
+      LDA #3
+      STA ParamNumberTiles
+
+      JSR DrawSprite
+      JMP NEXT_RENDER_ACTOR
+    :
 
     NEXT_RENDER_ACTOR:
       TXA
@@ -392,6 +450,46 @@
   PLA
   TAX
 
+  RTS
+.endproc
+
+.proc SpawnActors
+  SPAWN_SUBMARINE:
+    LDA Clock60
+    SEC
+    SBC PreviousSubmarine
+    CMP #3
+    BNE :+
+      LDA #ActorType::SUBMARINE
+      STA ParamType
+      LDA #223
+      STA ParamXPos
+      LDA #185
+      STA ParamYPos
+
+      JSR AddNewActor
+
+      LDA Clock60
+      STA PreviousSubmarine
+    :
+  SPAWN_AIRPLANE:
+    LDA Clock60
+    SEC
+    SBC PreviousAirplane
+    CMP #5
+    BNE :+
+      LDA #ActorType::AIRPLANE
+      STA ParamType
+      LDA #223
+      STA ParamXPos
+      LDA #80
+      STA ParamYPos
+
+      JSR AddNewActor
+
+      LDA Clock60
+      STA PreviousAirplane
+    :
   RTS
 .endproc
 
@@ -490,7 +588,7 @@
             JSR AddNewActor
         :
 
-      ; JSR SpawnActors
+      JSR SpawnActors
       JSR UpdateActors
       JSR RenderActors
 
