@@ -226,21 +226,19 @@
 .endproc
 
 .proc IsPointInsideBoundingBox
-  LDA ParamRectX1
-  CMP ParamXPos
-  BCS :+
-  
-  LDA ParamRectX2
-  CMP ParamXPos
+  LDA ParamXPos
+  CMP ParamRectX1
   BCC :+
 
-  LDA ParamRectY1
-  CMP ParamYPos
+  CMP ParamRectX2
   BCS :+
 
-  LDA ParamRectY2
-  CMP ParamYPos
+  LDA ParamYPos
+  CMP ParamRectY1
   BCC :+
+
+  CMP ParamRectY2
+  BCS :+
     LDA #1
     STA Collision
   :
