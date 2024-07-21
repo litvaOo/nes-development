@@ -5,7 +5,7 @@
 .include "actor.inc"
 
 .segment "ZEROPAGE"
-  PreviousButtons:           .res 1
+  PreviousButtons:   .res 1
   Buttons:           .res 1
 
   XPos:              .res 1 ; fixed point, hi byte is INT part
@@ -41,6 +41,13 @@
   PreviousOAMBytes:  .res 1
 
   Seed:              .res 2
+
+  Collision:         .res 1
+
+  ParamRectX1:       .res 1
+  ParamRectX2:       .res 1
+  ParamRectY1:       .res 1
+  ParamRectY2:       .res 1
 
 .segment "CODE"
 
@@ -218,6 +225,78 @@
   RTS
 .endproc
 
+.proc IsPointInsideBoundingBox
+  LDA ParamRectX1
+  CMP ParamXPos
+  BCS :+
+  
+  LDA ParamRectX2
+  CMP ParamXPos
+  BCC :+
+
+  LDA ParamRectY1
+  CMP ParamYPos
+  BCS :+
+
+  LDA ParamRectY2
+  CMP ParamYPos
+  BCC :+
+    LDA #1
+    STA Collision
+  :
+  RTS
+.endproc
+
+
+.proc CheckCollisionWithEnemies
+  TXA
+  PHA
+
+  LDX #0
+  STX Collision
+
+  ENEMY_COLLISION_LOOP:
+    CPX #MAX_ACTORS * .sizeof(Actor)
+    BEQ FINISH_COLLISION_CHECK
+      LDA ActorsArray + Actor::Type,X
+      CMP #ActorType::AIRPLANE
+      BNE NEXT_ENEMY
+      
+      LDA ActorsArray + Actor::XPos,X
+      STA ParamRectX1
+      LDA ActorsArray + Actor::YPos,X
+      STA ParamRectY1
+
+      LDA ActorsArray + Actor::XPos,X
+      CLC
+      ADC #22
+      STA ParamRectX2
+      LDA ActorsArray + Actor::YPos,X
+      CLC
+      ADC #8
+      STA ParamRectY2
+
+      JSR IsPointInsideBoundingBox
+
+      LDA Collision
+      BEQ NEXT_ENEMY
+        LDA #ActorType::NULL
+        STA ActorsArray+Actor::Type,X
+        JMP FINISH_COLLISION_CHECK
+  NEXT_ENEMY:
+    TXA
+    CLC
+    ADC #.sizeof(Actor)
+    TAX
+    JMP ENEMY_COLLISION_LOOP
+
+  FINISH_COLLISION_CHECK:
+  PLA
+  TAX
+
+  RTS
+.endproc
+
 .proc UpdateActors
   LDX #0
   UPDATE_ACTORS_LOOP:
@@ -227,12 +306,29 @@
     BNE :+
       LDA ActorsArray + Actor::YPos,X
       SEC
-      SBC #1
+      SBC #3
       STA ActorsArray + Actor::YPos,X
       CMP #45
-      BCS :+
+      BCS CHECK_COLLISION
         LDA #ActorType::NULL
         STA ActorsArray + Actor::Type,X
+      
+      CHECK_COLLISION:
+        LDA ActorsArray + Actor::XPos,X
+        CLC
+        ADC #3
+        STA ParamXPos
+
+        LDA ActorsArray + Actor::YPos,X
+        CLC
+        ADC #1
+        STA ParamYPos
+        JSR CheckCollisionWithEnemies
+
+        LDA Collision
+        BEQ :+
+          LDA #ActorType::NULL
+          STA ActorsArray + Actor::Type,X
     :
 
     CMP #ActorType::SUBMARINE
@@ -256,6 +352,7 @@
         LDA #ActorType::NULL
         STA ActorsArray + Actor::Type,X
     :
+
     NEXT_UPDATE_ACTOR:
       TXA
       CLC
@@ -472,34 +569,34 @@
 .endproc
 
 .proc SpawnActors
-  SPAWN_SUBMARINE:
-    LDA Clock60
-    SEC
-    SBC PreviousSubmarine
-    CMP #3
-    BNE :+
-      LDA #ActorType::SUBMARINE
-      STA ParamType
-      LDA #223
-      STA ParamXPos
-      JSR GetRandomNumber
-      LSR
-      LSR
-      LSR
-      CLC
-      ADC #180
-      STA ParamYPos
-
-      JSR AddNewActor
-
-      LDA Clock60
-      STA PreviousSubmarine
-    :
+  ; SPAWN_SUBMARINE:
+  ;   LDA Clock60
+  ;   SEC
+  ;   SBC PreviousSubmarine
+  ;   CMP #3
+  ;   BNE :+
+  ;     LDA #ActorType::SUBMARINE
+  ;     STA ParamType
+  ;     LDA #223
+  ;     STA ParamXPos
+  ;     JSR GetRandomNumber
+  ;     LSR
+  ;     LSR
+  ;     LSR
+  ;     CLC
+  ;     ADC #180
+  ;     STA ParamYPos
+  ;
+  ;     JSR AddNewActor
+  ;
+  ;     LDA Clock60
+  ;     STA PreviousSubmarine
+  ;   :
   SPAWN_AIRPLANE:
     LDA Clock60
     SEC
     SBC PreviousAirplane
-    CMP #2
+    CMP #1
     BNE :+
       LDA #ActorType::AIRPLANE
       STA ParamType
