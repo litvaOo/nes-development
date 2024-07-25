@@ -3,3 +3,5 @@
 *.fdb
 *.dbg
 *.nl
+target/
+debug/
