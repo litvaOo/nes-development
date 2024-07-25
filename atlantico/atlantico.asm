@@ -741,7 +741,7 @@
 .endproc
 
 
-.proc LoadTitleScreen
+.proc LoadTitleScreenRLE
   LDA #<TitleScreenData
   STA BackgroundPointer
   LDA #>TitleScreenData
@@ -749,22 +749,30 @@
 
   PPU_SETADDR $2000
 
-  LDX #$00
   LDY #$00
-  OUTER_LOOP:
-    INNER_LOOP:
-      LDA (BackgroundPointer),Y
-      STA PPU_DATA
-      INY
-      CPY #0
-      BEQ INCREASE_HI_BYTE
-      JMP INNER_LOOP
-    INCREASE_HI_BYTE:
-      INC BackgroundPointer+1
-      INX
-      CPX #4
-      BNE OUTER_LOOP
 
+  LENGTH_LOOP:
+    LDA (BackgroundPointer),Y
+    BEQ END_ROUTINE
+      INY
+
+      BNE :+
+        INC BackgroundPointer+1
+      :
+      TAX
+      LDA (BackgroundPointer),Y
+      INY
+      BNE :+
+        INC BackgroundPointer+1
+      :
+
+      TILE_LOOP:
+        STA PPU_DATA
+        DEX
+        BNE TILE_LOOP
+      JMP LENGTH_LOOP
+
+  END_ROUTINE:
   RTS
 .endproc
 
@@ -779,7 +787,7 @@
       STA GameState
 
       JSR LoadPalette
-      JSR LoadTitleScreen
+      JSR LoadTitleScreenRLE
 
       DRAW_MENU_ARROW:
         LDA #92
@@ -1277,7 +1285,7 @@ AttributeData:
   .byte $ff,$aa,$aa,$aa,$5a,$00,$00,$00
 
 TitleScreenData:
-  .incbin "titlescreen.nam"
+  .incbin "titlescreen.rle"
 
 .segment "CHARS1"
   .incbin "atlantico.chr"
