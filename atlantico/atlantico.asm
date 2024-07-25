@@ -1,7 +1,8 @@
 .include "../consts.inc"
-.include "../header.inc"
+.include "header.inc"
 .include "../reset.inc"
 .include "../utils.inc"
+.include "state.inc"
 .include "actor.inc"
 
 .segment "ZEROPAGE"
@@ -52,6 +53,11 @@
   Score:             .res 4
 
   BufferPointer:     .res 2
+  
+  GameState:         .res 1
+
+  MenuItem:          .res 1
+  PalettePointer:    .res 1
 
 .segment "CODE"
 
@@ -77,14 +83,41 @@
 .proc LoadPalette
   PPU_SETADDR $3F00
 
-  LDY #0
+  LDA MenuItem
+  BEQ SET_PALETTE_CLEAR
+  CMP #1
+  BEQ SET_PALETTE_CLOUDY
+  CMP #2
+  BEQ SET_PALETTE_NIGHT
 
-  LOOPPALETTE:
-    LDA PaletteData,Y
-    STA PPU_DATA
-    INY
-    CPY #32
-    BNE LOOPPALETTE
+  SET_PALETTE_CLEAR:
+    LDA #<PaletteDataClear
+    STA PalettePointer
+    LDA #>PaletteDataClear
+    STA PalettePointer+1 
+    JMP START_PALETTE_LOAD
+
+  SET_PALETTE_CLOUDY:
+    LDA #<PaletteDataCloudy
+    STA PalettePointer
+    LDA #>PaletteDataCloudy
+    STA PalettePointer+1 
+    JMP START_PALETTE_LOAD
+
+  SET_PALETTE_NIGHT:
+    LDA #<PaletteDataNight
+    STA PalettePointer
+    LDA #>PaletteDataNight
+    STA PalettePointer+1 
+
+  START_PALETTE_LOAD:
+    LDY #0
+    LOOPPALETTE:
+      LDA (PalettePointer),Y
+      STA PPU_DATA
+      INY
+      CPY #32
+      BNE LOOPPALETTE
 
   RTS
 .endproc
@@ -697,9 +730,128 @@
   RTS
 .endproc
 
+.proc SwitchCHRBank
+  STA $8000
+  RTS
+.endproc
+
+
+.proc LoadTitleScreen
+  LDA #<TitleScreenData
+  STA BackgroundPointer
+  LDA #>TitleScreenData
+  STA BackgroundPointer+1
+
+  PPU_SETADDR $2000
+
+  LDX #$00
+  LDY #$00
+  OUTER_LOOP:
+    INNER_LOOP:
+      LDA (BackgroundPointer),Y
+      STA PPU_DATA
+      INY
+      CPY #0
+      BEQ INCREASE_HI_BYTE
+      JMP INNER_LOOP
+    INCREASE_HI_BYTE:
+      INC BackgroundPointer+1
+      INX
+      CPX #4
+      BNE OUTER_LOOP
+
+  RTS
+.endproc
+
   RESET:
     INIT_NES
 
+    TITLE_SCREEN:
+      LDA #1
+      JSR SwitchCHRBank
+
+      LDA #State::TITLESCREEN
+      STA GameState
+
+      JSR LoadPalette
+      JSR LoadTitleScreen
+
+      DRAW_MENU_ARROW:
+        LDA #92
+        STA $0200
+        LDA #$23
+        STA $0201
+        LDA #%00000001
+        STA $0202      
+        LDA #95
+        STA $0203
+
+      ENABLE_NMI:
+        LDA #%10010000
+        STA PPU_CTRL
+        LDA #%00011110
+        STA PPU_MASK
+
+      TITLE_SCREEN_LOOP:
+        JSR ReadControllers
+        CHECK_START_BUTTON:
+        LDA Buttons
+        AND #BUTTON_START
+        BEQ :+
+          JMP GAMEPLAY
+        :
+        LDA Buttons
+        AND #BUTTON_DOWN
+        BEQ :+
+          CMP PreviousButtons
+          BEQ :+
+            LDA MenuItem
+            CMP #2
+            BEQ :+
+              LDA $0200
+              CLC
+              ADC #16
+              STA $0200
+              INC MenuItem
+        :
+
+        LDA Buttons
+        AND #BUTTON_UP
+        BEQ :+
+          CMP PreviousButtons
+          BEQ :+
+            LDA MenuItem
+            CMP #0
+            BEQ :+
+              LDA $0200
+              SEC
+              SBC #16
+              STA $0200
+              DEC MenuItem
+        :
+
+        LDA Buttons
+        STA PreviousButtons
+        WAIT_FOR_VBLANK_TITLE:
+          LDA IsDrawComplete
+          BEQ WAIT_FOR_VBLANK_TITLE
+
+        LDA #0
+        STA IsDrawComplete
+
+        JMP TITLE_SCREEN_LOOP 
+    
+    GAMEPLAY:
+    LDA #0
+    JSR SwitchCHRBank
+
+    LDA #State::PLAYING
+    STA GameState
+    
+    LDA #0
+    STA PPU_CTRL
+    STA PPU_MASK
+    
     LDA #0
     STA Frame
     STA Clock60
@@ -795,6 +947,14 @@
             JSR AddNewActor
         :
 
+      CHECK_SELECT:
+        LDA Buttons
+        AND #BUTTON_SELECT
+        BEQ :+
+          LDA #1
+          JSR SwitchCHRBank
+        :
+
       JSR SpawnActors
       JSR UpdateActors
       JSR RenderActors
@@ -816,6 +976,11 @@
     OAM_COPY:
       LDA #$02
       STA PPU_OAM_DMA
+    
+    SKIP_SCROLLING:
+      LDA GameState
+      CMP #State::PLAYING
+      BNE REFRESH_RENDERING
 
     BACKGROUND_BUFFER_RENDER:
       LDA #$00
@@ -846,7 +1011,7 @@
           DEX
           BNE DATA_LOOP
         JMP BACKGROUND_BUFFER_LOOP
-
+    
     NEW_COLUMN_CHECK:
       LDA XScroll
       AND #%00000111
@@ -925,9 +1090,15 @@
   IRQ:
     RTI
 
-PaletteData:
-  .byte $1C,$0F,$22,$1C, $1C,$37,$3D,$0F, $1C,$37,$3D,$30, $1C,$0F,$3D,$30
-  .byte $1C,$0F,$2D,$10, $1C,$0F,$20,$27, $1C,$2D,$38,$18, $1C,$0F,$1A,$32
+PaletteDataCloudy:
+  .byte $1C,$0F,$22,$1C, $1C,$37,$3D,$0F, $1C,$37,$3D,$30, $1C,$0F,$3D,$30 ; Background palette
+  .byte $1C,$0F,$2D,$10, $1C,$0F,$20,$27, $1C,$2D,$38,$18, $1C,$0F,$1A,$32 ; Sprite palette
+PaletteDataClear:
+  .byte $1C,$0F,$22,$1C, $1C,$36,$21,$0B, $1C,$36,$21,$30, $1C,$0F,$3D,$30 ; Background palette
+  .byte $1C,$0F,$2D,$10, $1C,$0F,$20,$27, $1C,$2D,$38,$18, $1C,$0F,$1A,$32 ; Sprite palette
+PaletteDataNight:
+  .byte $0C,$0F,$1C,$0C, $0C,$26,$0C,$0F, $0C,$26,$0C,$2D, $0C,$36,$07,$2D ; Background palette
+  .byte $0C,$0F,$1D,$2D, $0C,$0F,$20,$27, $0C,$2D,$38,$18, $0C,$0F,$1A,$21 ; Sprite palette
 
 BackgroundData:
   .byte $13,$13,$13,$13,$20,$21,$21,$21,$21,$21,$21,$21,$21,$21,$21,$21,$21,$21,$21,$23,$33,$15,$21,$12,$00,$31,$31,$31,$55,$56,$00,$00
@@ -1099,8 +1270,14 @@ AttributeData:
   .byte $ff,$aa,$aa,$aa,$59,$00,$00,$00
   .byte $ff,$aa,$aa,$aa,$5a,$00,$00,$00
 
-.segment "CHARS"
+TitleScreenData:
+  .incbin "titlescreen.nam"
+
+.segment "CHARS1"
   .incbin "atlantico.chr"
+
+.segment "CHARS2"
+  .incbin "titlescreen.chr"
 
 .segment "VECTORS"
   .word NMI
