@@ -57,7 +57,7 @@
   GameState:         .res 1
 
   MenuItem:          .res 1
-  PalettePointer:    .res 1
+  PalettePointer:    .res 2
 
 .segment "CODE"
 
@@ -119,6 +119,11 @@
       CPY #32
       BNE LOOPPALETTE
 
+  LDY #0
+  LDA XScroll
+  STA PPU_SCROLL
+  LDA #0
+  STA PPU_SCROLL
   RTS
 .endproc
 
@@ -813,6 +818,7 @@
               ADC #16
               STA $0200
               INC MenuItem
+          JSR LoadPalette
         :
 
         LDA Buttons
@@ -828,6 +834,7 @@
               SBC #16
               STA $0200
               DEC MenuItem
+          JSR LoadPalette
         :
 
         LDA Buttons
@@ -976,7 +983,7 @@
     OAM_COPY:
       LDA #$02
       STA PPU_OAM_DMA
-    
+   
     SKIP_SCROLLING:
       LDA GameState
       CMP #State::PLAYING
@@ -1081,7 +1088,6 @@
       STA Frame
 
     JSR DrawScore
-
     SET_DRAW_COMPLETE:
       LDA #1
       STA IsDrawComplete
