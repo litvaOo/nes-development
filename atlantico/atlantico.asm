@@ -148,7 +148,7 @@ FAMISTUDIO_DPCM_OFF           = $E000
 .endproc
 
 .proc DrawScore
-  LDA #$70
+  LDA #$07
   STA BufferPointer+1
   LDA #$00
   STA BufferPointer
@@ -1058,7 +1058,7 @@ FAMISTUDIO_DPCM_OFF           = $E000
     BACKGROUND_BUFFER_RENDER:
       LDA #$00
       STA BufferPointer
-      LDA #$70
+      LDA #$07
       STA BufferPointer+1
 
       LDY #$0
