@@ -428,10 +428,12 @@ FAMISTUDIO_DPCM_OFF           = $E000
 
           LDA #ActorType::NULL
           STA ActorsArray + Actor::Type,X
-  
+ 
+          PUSH_REGISTERS
           LDA #1
           LDX #FAMISTUDIO_SFX_CH1
           JSR famistudio_sfx_play
+          PULL_REGISTERS
     :
 
     CMP #ActorType::SUBMARINE
