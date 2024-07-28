@@ -59,7 +59,28 @@
   MenuItem:          .res 1
   PalettePointer:    .res 2
 
+  Offset:            .res 2
 .segment "CODE"
+
+.define FAMISTUDIO_CA65_ZP_SEGMENT   ZEROPAGE
+.define FAMISTUDIO_CA65_RAM_SEGMENT  RAM
+.define FAMISTUDIO_CA65_CODE_SEGMENT CODE
+
+FAMISTUDIO_CFG_EXTERNAL       = 1
+FAMISTUDIO_CFG_DPCM_SUPPORT   = 1
+FAMISTUDIO_CFG_SFX_SUPPORT    = 1
+FAMISTUDIO_CFG_SFX_STREAMS    = 2
+FAMISTUDIO_CFG_EQUALIZER      = 1
+FAMISTUDIO_USE_VOLUME_TRACK   = 1
+FAMISTUDIO_USE_PITCH_TRACK    = 1
+FAMISTUDIO_USE_SLIDE_NOTES    = 1
+FAMISTUDIO_USE_VIBRATO        = 1
+FAMISTUDIO_USE_ARPEGGIO       = 1
+FAMISTUDIO_CFG_SMOOTH_VIBRATO = 1
+FAMISTUDIO_USE_RELEASE_NOTES  = 1
+FAMISTUDIO_DPCM_OFF           = $E000
+
+.include "audioengine.asm"
 
 .proc ReadControllers
   LDA #1
@@ -81,7 +102,6 @@
 .endproc
 
 .proc LoadPalette
-  PPU_SETADDR $3F00
 
   LDA MenuItem
   BEQ SET_PALETTE_CLEAR
@@ -111,6 +131,7 @@
     STA PalettePointer+1 
 
   START_PALETTE_LOAD:
+    PPU_SETADDR $3F00
     LDY #0
     LOOPPALETTE:
       LDA (PalettePointer),Y
@@ -119,7 +140,6 @@
       CPY #32
       BNE LOOPPALETTE
 
-  LDY #0
   LDA XScroll
   STA PPU_SCROLL
   LDA #0
@@ -404,8 +424,14 @@
         LDA Collision
         BEQ :+
           JSR IncrementScore
+          JSR DrawScore
+
           LDA #ActorType::NULL
           STA ActorsArray + Actor::Type,X
+  
+          LDA #1
+          LDX #FAMISTUDIO_SFX_CH1
+          JSR famistudio_sfx_play
     :
 
     CMP #ActorType::SUBMARINE
@@ -779,6 +805,9 @@
   RESET:
     INIT_NES
 
+    ; LDA #%00000001
+    ; STA APU_FLAGS
+
     TITLE_SCREEN:
       LDA #1
       JSR SwitchCHRBank
@@ -788,6 +817,15 @@
 
       JSR LoadPalette
       JSR LoadTitleScreenRLE
+
+      AUDIO_ENGINE_INIT:
+        LDX #<music_data_titan
+        LDY #>music_data_titan
+        LDA #1
+        JSR famistudio_init
+
+        LDA #0
+        JSR famistudio_music_play
 
       DRAW_MENU_ARROW:
         LDA #92
@@ -816,6 +854,7 @@
         LDA Buttons
         AND #BUTTON_DOWN
         BEQ :+
+          LDA Buttons
           CMP PreviousButtons
           BEQ :+
             LDA MenuItem
@@ -826,12 +865,13 @@
               ADC #16
               STA $0200
               INC MenuItem
-          JSR LoadPalette
+              JSR LoadPalette
         :
 
         LDA Buttons
         AND #BUTTON_UP
         BEQ :+
+          LDA Buttons
           CMP PreviousButtons
           BEQ :+
             LDA MenuItem
@@ -842,7 +882,7 @@
               SBC #16
               STA $0200
               DEC MenuItem
-          JSR LoadPalette
+              JSR LoadPalette
         :
 
         LDA Buttons
@@ -880,6 +920,21 @@
     LDA #$10
     STA Seed+0
     STA Seed+1
+
+    JSR famistudio_music_stop
+    LDX #<music_data_maritime
+    LDY #>music_data_maritime
+
+    LDA #1
+    JSR famistudio_init
+
+    LDA #0
+    JSR famistudio_music_play
+
+    LDX #<sounds
+    LDA #>sounds
+
+    JSR famistudio_sfx_init
 
     MAIN:
       JSR LoadPalette
@@ -948,7 +1003,6 @@
         AND #BUTTON_A
         BEQ :+
           LDA Buttons
-          AND #BUTTON_A
           CMP PreviousButtons
           BEQ :+
             LDA #ActorType::MISSILE
@@ -960,6 +1014,10 @@
             SBC #8
             STA ParamYPos
             JSR AddNewActor
+
+            LDA #0
+            LDX #FAMISTUDIO_SFX_CH0
+            JSR famistudio_sfx_play
         :
 
       CHECK_SELECT:
@@ -1086,6 +1144,7 @@
       STA PPU_CTRL
       LDA #%00011110
       STA PPU_MASK
+      
 
     SET_GAME_CLOCK:
       LDA Frame
@@ -1099,20 +1158,23 @@
     SET_DRAW_COMPLETE:
       LDA #1
       STA IsDrawComplete
+
+    JSR famistudio_update
+    ; JSR LoadPalette
     PULL_REGISTERS
     RTI
   IRQ:
     RTI
 
 PaletteDataCloudy:
-  .byte $1C,$0F,$22,$1C, $1C,$37,$3D,$0F, $1C,$37,$3D,$30, $1C,$0F,$3D,$30 ; Background palette
-  .byte $1C,$0F,$2D,$10, $1C,$0F,$20,$27, $1C,$2D,$38,$18, $1C,$0F,$1A,$32 ; Sprite palette
+  .byte $1C,$0F,$22,$1C, $1C,$37,$3D,$0F, $1C,$37,$3D,$30, $1C,$0F,$3D,$30
+  .byte $1C,$0F,$2D,$10, $1C,$0F,$20,$27, $1C,$2D,$38,$18, $1C,$0F,$1A,$32
 PaletteDataClear:
-  .byte $1C,$0F,$22,$1C, $1C,$36,$21,$0B, $1C,$36,$21,$30, $1C,$0F,$3D,$30 ; Background palette
-  .byte $1C,$0F,$2D,$10, $1C,$0F,$20,$27, $1C,$2D,$38,$18, $1C,$0F,$1A,$32 ; Sprite palette
+  .byte $1C,$0F,$22,$1C, $1C,$36,$21,$0B, $1C,$36,$21,$30, $1C,$0F,$3D,$30
+  .byte $1C,$0F,$2D,$10, $1C,$0F,$20,$27, $1C,$2D,$38,$18, $1C,$0F,$1A,$32
 PaletteDataNight:
-  .byte $0C,$0F,$1C,$0C, $0C,$26,$0C,$0F, $0C,$26,$0C,$2D, $0C,$36,$07,$2D ; Background palette
-  .byte $0C,$0F,$1D,$2D, $0C,$0F,$20,$27, $0C,$2D,$38,$18, $0C,$0F,$1A,$21 ; Sprite palette
+  .byte $0C,$0F,$1C,$0C, $0C,$26,$0C,$0F, $0C,$26,$0C,$2D, $0C,$36,$07,$2D
+  .byte $0C,$0F,$1D,$2D, $0C,$0F,$20,$27, $0C,$2D,$38,$18, $0C,$0F,$1A,$21
 
 BackgroundData:
   .byte $13,$13,$13,$13,$20,$21,$21,$21,$21,$21,$21,$21,$21,$21,$21,$21,$21,$21,$21,$23,$33,$15,$21,$12,$00,$31,$31,$31,$55,$56,$00,$00
@@ -1286,6 +1348,13 @@ AttributeData:
 
 TitleScreenData:
   .incbin "titlescreen.rle"
+
+MusicData:
+  .include "music/titan.asm"
+  .include "music/maritime.asm"
+
+SoundFXData:
+  .include "sfx/sounds.asm"
 
 .segment "CHARS1"
   .incbin "atlantico.chr"
